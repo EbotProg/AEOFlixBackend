@@ -11,6 +11,16 @@ const redisClient = createClient({
     url: 'redis://localhost:6379', // Default Redis port
 })
 import { PassThrough } from 'stream';
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: "dyult56pk",
+    api_key: "492999857674452",
+    api_secret: "9_wkhQOrKSMr_rXcGgIQ9GSFqdI",
+    timeout: 60000,
+})
 
 export const downloadVideoController = async (req:Request, res:Response): Promise<any> => {
     try {
@@ -129,7 +139,7 @@ export const uploadVideoBackup2 = async (req: Request, res: Response): Promise<a
 };
 
 
-export const uploadVideo = async (req: Request, res: Response): Promise<any> => {
+export const uploadVideoBackup3 = async (req: Request, res: Response): Promise<any> => {
     try {
         const file = req.file;
         const providedThumbnail = req.body.thumbnail; // Check if thumbnail is provided
@@ -200,6 +210,55 @@ export const uploadVideo = async (req: Request, res: Response): Promise<any> => 
     }
 };
 
+export const uploadVideo = async (req: Request, res: Response): Promise<any> => {
+    try {
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: "No file uploaded." });
+        }
+
+        // Upload video directly to Cloudinary via streaming
+        const uploadPromise = new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                { resource_type: "video", folder: "videos" },
+                (error, result) => {
+                    if (error) return reject(error);
+                    resolve(result);
+                }
+            );
+
+            // Pipe the buffer to Cloudinary (avoids writing to disk)
+            uploadStream.end(file.buffer);
+        });
+
+        const result: any = await uploadPromise; // Wait for upload to complete
+
+        
+
+        // Ensure thumbnail is generated dynamically
+        const thumbnailUrl = cloudinary.url(result.public_id, {
+            resource_type: "video",
+            format: "jpg",
+            transformation: [{ width: 300, height: 200, crop: "thumb" }],
+        });
+
+        // Save metadata in MongoDB
+        const newVideo = new Video({
+            title: file.originalname,
+            cloudinaryUrl: result.secure_url,
+            thumbnailUrl,
+        });
+        await newVideo.save();
+
+        res.status(200).json({
+            message: "Video uploaded successfully to Cloudinary!",
+            video: newVideo,
+        });
+    } catch (error) {
+        console.error("Error uploading video:", error);
+        res.status(500).json({ error: "Failed to upload video." });
+    }
+};
 // Function to generate a thumbnail from the video
 const generateThumbnail = (videoPath: string, thumbnailName: string): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -592,7 +651,7 @@ export const serveVideobackup2 = async (req: Request, res: Response): Promise<an
     }
 };
 
-export const serveVideo = async (req: Request, res: Response): Promise<any> => {
+export const serveVideoBackup3 = async (req: Request, res: Response): Promise<any> => {
     try {
         const range = req.headers.range;
         const videoId = req.params.id;
@@ -653,6 +712,22 @@ export const serveVideo = async (req: Request, res: Response): Promise<any> => {
         if (!res.headersSent) {
             res.status(500).json({ error: "Failed to serve video." });
         }
+    }
+};
+
+export const serveVideo = async (req: Request, res: Response): Promise<any> => {
+    try {
+        const videoId = req.params.id;
+        const video = await Video.findById(videoId);
+        if (!video) {
+            return res.status(404).json({ error: "Video not found." });
+        }
+
+        // Redirect to Cloudinary URL
+        res.redirect(video.cloudinaryUrl);
+    } catch (error) {
+        console.error("Error serving video:", error);
+        res.status(500).json({ error: "Failed to serve video." });
     }
 };
 

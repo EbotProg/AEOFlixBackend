@@ -7,16 +7,17 @@ import { uploadVideo, getVideos, serveVideo } from "../controllers/videoControll
 const router = express.Router();
 
 // Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, "uploads"); // Save files in the "uploads" folder
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${Date.now()}_${file.originalname}`;
-        cb(null, uniqueName);
-    },
-});
-const upload = multer({ storage });
+// const storage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         cb(null, "uploads"); // Save files in the "uploads" folder
+//     },
+//     filename: (req, file, cb) => {
+//         const uniqueName = `${Date.now()}_${file.originalname}`;
+//         cb(null, uniqueName);
+//     },
+// });
+// const upload = multer({ storage });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Define routes
 router.post('/download', downloadVideoController);

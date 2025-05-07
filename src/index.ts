@@ -5,6 +5,7 @@ import connectDB from './config/db';
 import cors from 'cors';
 import path from 'path';
 
+
 dotenv.config();
 
 const app = express();

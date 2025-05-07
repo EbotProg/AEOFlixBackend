@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.serveVideo = exports.serveVideobackup2 = exports.serveVideobackup = exports.serveVideoOneGo = exports.getVideos = exports.uploadVideo = exports.uploadVideoBackup2 = exports.uploadVideoBackup = exports.downloadVideoController = void 0;
+exports.serveVideo = exports.serveVideoBackup3 = exports.serveVideobackup2 = exports.serveVideobackup = exports.serveVideoOneGo = exports.getVideos = exports.uploadVideo = exports.uploadVideoBackup3 = exports.uploadVideoBackup2 = exports.uploadVideoBackup = exports.downloadVideoController = void 0;
 const videoService_1 = require("../services/videoService");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -23,6 +23,14 @@ const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
 const redis_1 = require("redis");
 const redisClient = (0, redis_1.createClient)({
     url: 'redis://localhost:6379', // Default Redis port
+});
+const cloudinary_1 = require("cloudinary");
+// Configure Cloudinary
+cloudinary_1.v2.config({
+    cloud_name: "dyult56pk",
+    api_key: "492999857674452",
+    api_secret: "9_wkhQOrKSMr_rXcGgIQ9GSFqdI",
+    timeout: 60000,
 });
 const downloadVideoController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -131,7 +139,7 @@ const uploadVideoBackup2 = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.uploadVideoBackup2 = uploadVideoBackup2;
-const uploadVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const uploadVideoBackup3 = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const file = req.file;
         const providedThumbnail = req.body.thumbnail; // Check if thumbnail is provided
@@ -188,6 +196,47 @@ const uploadVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         fs_1.default.unlinkSync(originalFilePath);
         res.status(200).json({
             message: "Video uploaded, converted to MP4, and thumbnail created successfully!",
+            video: newVideo,
+        });
+    }
+    catch (error) {
+        console.error("Error uploading video:", error);
+        res.status(500).json({ error: "Failed to upload video." });
+    }
+});
+exports.uploadVideoBackup3 = uploadVideoBackup3;
+const uploadVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: "No file uploaded." });
+        }
+        // Upload video directly to Cloudinary via streaming
+        const uploadPromise = new Promise((resolve, reject) => {
+            const uploadStream = cloudinary_1.v2.uploader.upload_stream({ resource_type: "video", folder: "videos" }, (error, result) => {
+                if (error)
+                    return reject(error);
+                resolve(result);
+            });
+            // Pipe the buffer to Cloudinary (avoids writing to disk)
+            uploadStream.end(file.buffer);
+        });
+        const result = yield uploadPromise; // Wait for upload to complete
+        // Ensure thumbnail is generated dynamically
+        const thumbnailUrl = cloudinary_1.v2.url(result.public_id, {
+            resource_type: "video",
+            format: "jpg",
+            transformation: [{ width: 300, height: 200, crop: "thumb" }],
+        });
+        // Save metadata in MongoDB
+        const newVideo = new videoModel_1.default({
+            title: file.originalname,
+            cloudinaryUrl: result.secure_url,
+            thumbnailUrl,
+        });
+        yield newVideo.save();
+        res.status(200).json({
+            message: "Video uploaded successfully to Cloudinary!",
             video: newVideo,
         });
     }
@@ -546,7 +595,7 @@ const serveVideobackup2 = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.serveVideobackup2 = serveVideobackup2;
-const serveVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const serveVideoBackup3 = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const range = req.headers.range;
         const videoId = req.params.id;
@@ -597,6 +646,22 @@ const serveVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         if (!res.headersSent) {
             res.status(500).json({ error: "Failed to serve video." });
         }
+    }
+});
+exports.serveVideoBackup3 = serveVideoBackup3;
+const serveVideo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const videoId = req.params.id;
+        const video = yield videoModel_1.default.findById(videoId);
+        if (!video) {
+            return res.status(404).json({ error: "Video not found." });
+        }
+        // Redirect to Cloudinary URL
+        res.redirect(video.cloudinaryUrl);
+    }
+    catch (error) {
+        console.error("Error serving video:", error);
+        res.status(500).json({ error: "Failed to serve video." });
     }
 });
 exports.serveVideo = serveVideo;
