@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 connectDB();
 
 app.use(cors({
-  origin: 'http://localhost:3000', // Allow only this origin
+  origin: 'aeo-flix-frontend.vercel.app', // Allow only this origin
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Specify allowed methods
   credentials: true // Enable credentials if needed
 }));
