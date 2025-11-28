@@ -733,10 +733,7 @@ export const serveVideoBackup2 = async (
   }
 };
 
-export const serveVideoBackup3 = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const serveVideo = async (req: Request, res: Response): Promise<any> => {
   try {
     const range = req.headers.range;
     const videoId = req.params.id;
@@ -801,666 +798,666 @@ export const serveVideoBackup3 = async (
   }
 };
 
-export const serveVideoBackup4 = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
-  try {
-    const range = req.headers.range;
-    const videoId = req.params.id;
-    console.log("range", range);
+// export const serveVideoBackup4 = async (
+//   req: Request,
+//   res: Response
+// ): Promise<any> => {
+//   try {
+//     const range = req.headers.range;
+//     const videoId = req.params.id;
+//     console.log("range", range);
 
-    if (range) {
-      // Try to serve from Redis cache first
-      const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : null;
+//     if (range) {
+//       // Try to serve from Redis cache first
+//       const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+//       const start = parseInt(startStr, 10);
+//       const end = endStr ? parseInt(endStr, 10) : null;
 
-      try {
-        // Ensure Redis is connected
-        if (!redisClient.isOpen) {
-          await redisClient.connect();
-        }
+//       try {
+//         // Ensure Redis is connected
+//         if (!redisClient.isOpen) {
+//           await redisClient.connect();
+//         }
 
-        // Strategy 1: Check for exact range cache
-        const exactRangeKey = `video:${videoId}:range:${start}-${end || ""}`;
-        const cachedRangeResponse = await redisClient.get(exactRangeKey);
+//         // Strategy 1: Check for exact range cache
+//         const exactRangeKey = `video:${videoId}:range:${start}-${end || ""}`;
+//         const cachedRangeResponse = await redisClient.get(exactRangeKey);
 
-        if (cachedRangeResponse) {
-          console.log(`Serving exact range from Redis cache: ${exactRangeKey}`);
-          const cachedData = JSON.parse(cachedRangeResponse);
-          res.writeHead(206, cachedData.headers);
-          res.end(Buffer.from(cachedData.chunk, "base64"));
-          return;
-        }
+//         if (cachedRangeResponse) {
+//           console.log(`Serving exact range from Redis cache: ${exactRangeKey}`);
+//           const cachedData = JSON.parse(cachedRangeResponse);
+//           res.writeHead(206, cachedData.headers);
+//           res.end(Buffer.from(cachedData.chunk, "base64"));
+//           return;
+//         }
 
-        // Strategy 2: Check for chunk cache that contains this range
-        const cachedChunksKey = `video:${videoId}:chunks`;
-        const cachedChunksInfo = await redisClient.get(cachedChunksKey);
+//         // Strategy 2: Check for chunk cache that contains this range
+//         const cachedChunksKey = `video:${videoId}:chunks`;
+//         const cachedChunksInfo = await redisClient.get(cachedChunksKey);
 
-        if (cachedChunksInfo) {
-          const chunksInfo = JSON.parse(cachedChunksInfo);
+//         if (cachedChunksInfo) {
+//           const chunksInfo = JSON.parse(cachedChunksInfo);
 
-          // Find a chunk that contains the requested range
-          for (const chunkInfo of chunksInfo) {
-            if (start >= chunkInfo.start && (!end || end <= chunkInfo.end)) {
-              const chunkKey = `video:${videoId}:chunk:${chunkInfo.start}-${chunkInfo.end}`;
-              const cachedChunk = await redisClient.get(chunkKey);
+//           // Find a chunk that contains the requested range
+//           for (const chunkInfo of chunksInfo) {
+//             if (start >= chunkInfo.start && (!end || end <= chunkInfo.end)) {
+//               const chunkKey = `video:${videoId}:chunk:${chunkInfo.start}-${chunkInfo.end}`;
+//               const cachedChunk = await redisClient.get(chunkKey);
 
-              if (cachedChunk) {
-                const chunkBuffer = Buffer.from(cachedChunk, "base64");
-                const offsetStart = start - chunkInfo.start;
-                const offsetEnd = end
-                  ? end - chunkInfo.start
-                  : chunkBuffer.length - 1;
-                const extractedChunk = chunkBuffer.slice(
-                  offsetStart,
-                  offsetEnd + 1
-                );
+//               if (cachedChunk) {
+//                 const chunkBuffer = Buffer.from(cachedChunk, "base64");
+//                 const offsetStart = start - chunkInfo.start;
+//                 const offsetEnd = end
+//                   ? end - chunkInfo.start
+//                   : chunkBuffer.length - 1;
+//                 const extractedChunk = chunkBuffer.slice(
+//                   offsetStart,
+//                   offsetEnd + 1
+//                 );
 
-                // Get video size from cache
-                const videoSizeKey = `video:${videoId}:size`;
-                const videoSize = (await redisClient.get(videoSizeKey)) || 0;
+//                 // Get video size from cache
+//                 const videoSizeKey = `video:${videoId}:size`;
+//                 const videoSize = (await redisClient.get(videoSizeKey)) || 0;
 
-                const headers = {
-                  "Content-Range": `bytes ${start}-${
-                    start + extractedChunk.length - 1
-                  }/${videoSize}`,
-                  "Accept-Ranges": "bytes",
-                  "Content-Length": extractedChunk.length,
-                  "Content-Type": "video/mp4",
-                  "Access-Control-Allow-Origin": "*",
-                  "Cache-Control": "no-cache, no-store, must-revalidate",
-                };
+//                 const headers = {
+//                   "Content-Range": `bytes ${start}-${
+//                     start + extractedChunk.length - 1
+//                   }/${videoSize}`,
+//                   "Accept-Ranges": "bytes",
+//                   "Content-Length": extractedChunk.length,
+//                   "Content-Type": "video/mp4",
+//                   "Access-Control-Allow-Origin": "*",
+//                   "Cache-Control": "no-cache, no-store, must-revalidate",
+//                 };
 
-                console.log(
-                  `Serving partial range from cached chunk: ${chunkKey}`
-                );
-                res.writeHead(206, headers);
-                res.end(extractedChunk);
-                return;
-              }
-            }
-          }
-        }
-      } catch (cacheError) {
-        console.error("Redis cache error:", cacheError);
-        // Continue with normal flow if cache fails
-      }
-    }
+//                 console.log(
+//                   `Serving partial range from cached chunk: ${chunkKey}`
+//                 );
+//                 res.writeHead(206, headers);
+//                 res.end(extractedChunk);
+//                 return;
+//               }
+//             }
+//           }
+//         }
+//       } catch (cacheError) {
+//         console.error("Redis cache error:", cacheError);
+//         // Continue with normal flow if cache fails
+//       }
+//     }
 
-    // If we reach here, process the file normally
-    const video = await Video.findById(videoId);
-    if (!video) {
-      return res.status(404).json({ error: "Video not found." });
-    }
+//     // If we reach here, process the file normally
+//     const video = await Video.findById(videoId);
+//     if (!video) {
+//       return res.status(404).json({ error: "Video not found." });
+//     }
 
-    const videoStats = fs.statSync(video.filePath);
+//     const videoStats = fs.statSync(video.filePath);
 
-    // Cache video size for future reference
-    try {
-      if (!redisClient.isOpen) {
-        await redisClient.connect();
-      }
-      await redisClient.setEx(
-        `video:${videoId}:size`,
-        3600,
-        videoStats.size.toString()
-      );
-    } catch (err) {
-      console.error("Failed to cache video size:", err);
-    }
+//     // Cache video size for future reference
+//     try {
+//       if (!redisClient.isOpen) {
+//         await redisClient.connect();
+//       }
+//       await redisClient.setEx(
+//         `video:${videoId}:size`,
+//         3600,
+//         videoStats.size.toString()
+//       );
+//     } catch (err) {
+//       console.error("Failed to cache video size:", err);
+//     }
 
-    if (range) {
-      const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : videoStats.size - 1;
+//     if (range) {
+//       const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+//       const start = parseInt(startStr, 10);
+//       const end = endStr ? parseInt(endStr, 10) : videoStats.size - 1;
 
-      // Validate range
-      if (isNaN(start) || start < 0 || start >= videoStats.size) {
-        res.writeHead(416, {
-          "Content-Range": `bytes */${videoStats.size}`,
-        });
-        return res.end();
-      }
+//       // Validate range
+//       if (isNaN(start) || start < 0 || start >= videoStats.size) {
+//         res.writeHead(416, {
+//           "Content-Range": `bytes */${videoStats.size}`,
+//         });
+//         return res.end();
+//       }
 
-      const chunkSize = Math.min(end - start + 1, videoStats.size - start);
-      const actualEnd = start + chunkSize - 1;
+//       const chunkSize = Math.min(end - start + 1, videoStats.size - start);
+//       const actualEnd = start + chunkSize - 1;
 
-      try {
-        // Ensure Redis is connected
-        if (!redisClient.isOpen) {
-          await redisClient.connect();
-        }
+//       try {
+//         // Ensure Redis is connected
+//         if (!redisClient.isOpen) {
+//           await redisClient.connect();
+//         }
 
-        const chunkKey = `video:${videoId}:chunk:${start}-${actualEnd}`;
-        const cachedChunk = await redisClient.get(chunkKey);
-        let chunk: Buffer;
+//         const chunkKey = `video:${videoId}:chunk:${start}-${actualEnd}`;
+//         const cachedChunk = await redisClient.get(chunkKey);
+//         let chunk: Buffer;
 
-        if (cachedChunk) {
-          console.log(`Serving chunk from Redis cache: ${chunkKey}`);
-          chunk = Buffer.from(cachedChunk, "base64");
-        } else {
-          // Read chunk from file and cache it
-          chunk = await new Promise<Buffer>((resolve, reject) => {
-            const chunks: Buffer[] = [];
-            const videoStream = fs.createReadStream(video.filePath, {
-              start,
-              end: actualEnd,
-            });
+//         if (cachedChunk) {
+//           console.log(`Serving chunk from Redis cache: ${chunkKey}`);
+//           chunk = Buffer.from(cachedChunk, "base64");
+//         } else {
+//           // Read chunk from file and cache it
+//           chunk = await new Promise<Buffer>((resolve, reject) => {
+//             const chunks: Buffer[] = [];
+//             const videoStream = fs.createReadStream(video.filePath, {
+//               start,
+//               end: actualEnd,
+//             });
 
-            videoStream.on("data", (data) => {
-              const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-              chunks.push(buffer);
-            });
-            videoStream.on("end", () => resolve(Buffer.concat(chunks)));
-            videoStream.on("error", reject);
-          });
+//             videoStream.on("data", (data) => {
+//               const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+//               chunks.push(buffer);
+//             });
+//             videoStream.on("end", () => resolve(Buffer.concat(chunks)));
+//             videoStream.on("error", reject);
+//           });
 
-          // Cache the chunk
-          try {
-            await redisClient.setEx(chunkKey, 3600, chunk.toString("base64"));
+//           // Cache the chunk
+//           try {
+//             await redisClient.setEx(chunkKey, 3600, chunk.toString("base64"));
 
-            // Cache the complete response data
-            const rangeResponseKey = `video:${videoId}:range:${start}-${actualEnd}`;
-            const responseData = {
-              headers: {
-                "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-                "Accept-Ranges": "bytes",
-                "Content-Length": chunkSize,
-                "Content-Type": "video/mp4",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-              },
-              chunk: chunk.toString("base64"),
-            };
-            await redisClient.setEx(
-              rangeResponseKey,
-              3600,
-              JSON.stringify(responseData)
-            );
+//             // Cache the complete response data
+//             const rangeResponseKey = `video:${videoId}:range:${start}-${actualEnd}`;
+//             const responseData = {
+//               headers: {
+//                 "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//                 "Accept-Ranges": "bytes",
+//                 "Content-Length": chunkSize,
+//                 "Content-Type": "video/mp4",
+//                 "Access-Control-Allow-Origin": "*",
+//                 "Cache-Control": "no-cache, no-store, must-revalidate",
+//               },
+//               chunk: chunk.toString("base64"),
+//             };
+//             await redisClient.setEx(
+//               rangeResponseKey,
+//               3600,
+//               JSON.stringify(responseData)
+//             );
 
-            // Update chunks registry
-            const chunksKey = `video:${videoId}:chunks`;
-            let chunksInfo = [];
+//             // Update chunks registry
+//             const chunksKey = `video:${videoId}:chunks`;
+//             let chunksInfo = [];
 
-            try {
-              const existingChunksInfo = await redisClient.get(chunksKey);
-              if (existingChunksInfo) {
-                chunksInfo = JSON.parse(existingChunksInfo);
-              }
-            } catch (err) {
-              console.error("Error reading chunks registry:", err);
-            }
+//             try {
+//               const existingChunksInfo = await redisClient.get(chunksKey);
+//               if (existingChunksInfo) {
+//                 chunksInfo = JSON.parse(existingChunksInfo);
+//               }
+//             } catch (err) {
+//               console.error("Error reading chunks registry:", err);
+//             }
 
-            const chunkExists = chunksInfo.some(
-              (ci: { start: number; end: number }) =>
-                ci.start === start && ci.end === actualEnd
-            );
+//             const chunkExists = chunksInfo.some(
+//               (ci: { start: number; end: number }) =>
+//                 ci.start === start && ci.end === actualEnd
+//             );
 
-            if (!chunkExists) {
-              chunksInfo.push({ start, end: actualEnd });
-              await redisClient.setEx(
-                chunksKey,
-                3600,
-                JSON.stringify(chunksInfo)
-              );
-            }
-          } catch (cacheError) {
-            console.error("Cache storage error:", cacheError);
-          }
-        }
+//             if (!chunkExists) {
+//               chunksInfo.push({ start, end: actualEnd });
+//               await redisClient.setEx(
+//                 chunksKey,
+//                 3600,
+//                 JSON.stringify(chunksInfo)
+//               );
+//             }
+//           } catch (cacheError) {
+//             console.error("Cache storage error:", cacheError);
+//           }
+//         }
 
-        const headers = {
-          "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": "video/mp4",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        };
+//         const headers = {
+//           "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//           "Accept-Ranges": "bytes",
+//           "Content-Length": chunkSize,
+//           "Content-Type": "video/mp4",
+//           "Access-Control-Allow-Origin": "*",
+//           "Cache-Control": "no-cache, no-store, must-revalidate",
+//         };
 
-        res.writeHead(206, headers);
-        res.end(chunk);
-        return;
-      } catch (redisError) {
-        console.error("Redis error, falling back to streaming:", redisError);
-        // Fallback to direct streaming if Redis fails
-        const headers = {
-          "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": "video/mp4",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        };
-        res.writeHead(206, headers);
-        const videoStream = fs.createReadStream(video.filePath, {
-          start,
-          end: actualEnd,
-        });
-        videoStream.pipe(res);
-        return;
-      }
-    }
+//         res.writeHead(206, headers);
+//         res.end(chunk);
+//         return;
+//       } catch (redisError) {
+//         console.error("Redis error, falling back to streaming:", redisError);
+//         // Fallback to direct streaming if Redis fails
+//         const headers = {
+//           "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//           "Accept-Ranges": "bytes",
+//           "Content-Length": chunkSize,
+//           "Content-Type": "video/mp4",
+//           "Access-Control-Allow-Origin": "*",
+//           "Cache-Control": "no-cache, no-store, must-revalidate",
+//         };
+//         res.writeHead(206, headers);
+//         const videoStream = fs.createReadStream(video.filePath, {
+//           start,
+//           end: actualEnd,
+//         });
+//         videoStream.pipe(res);
+//         return;
+//       }
+//     }
 
-    // If no range is requested, serve the entire file
-    res.writeHead(200, {
-      "Content-Length": videoStats.size,
-      "Content-Type": "video/mp4",
-      "Accept-Ranges": "bytes",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-    });
-    const videoStream = fs.createReadStream(video.filePath);
-    videoStream.pipe(res);
-  } catch (error) {
-    console.error("Error serving video:", error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to serve video." });
-    }
-  }
-};
+//     // If no range is requested, serve the entire file
+//     res.writeHead(200, {
+//       "Content-Length": videoStats.size,
+//       "Content-Type": "video/mp4",
+//       "Accept-Ranges": "bytes",
+//       "Access-Control-Allow-Origin": "*",
+//       "Cache-Control": "no-cache, no-store, must-revalidate",
+//     });
+//     const videoStream = fs.createReadStream(video.filePath);
+//     videoStream.pipe(res);
+//   } catch (error) {
+//     console.error("Error serving video:", error);
+//     if (!res.headersSent) {
+//       res.status(500).json({ error: "Failed to serve video." });
+//     }
+//   }
+// };
 
 /*** TEST */
-export const serveVideo = async (req: Request, res: Response): Promise<any> => {
-  try {
-    const range = req.headers.range;
-    const videoId = req.params.id;
-    const userSession = req.headers["user-session"] || "default";
+// export const serveVideo = async (req: Request, res: Response): Promise<any> => {
+//   try {
+//     const range = req.headers.range;
+//     const videoId = req.params.id;
+//     const userSession = req.headers["user-session"] || "default";
 
-    // Get video info first - MOVED THIS UP
-    const video = await Video.findById(videoId);
-    if (!video) {
-      return res.status(404).json({ error: "Video not found." });
-    }
+//     // Get video info first - MOVED THIS UP
+//     const video = await Video.findById(videoId);
+//     if (!video) {
+//       return res.status(404).json({ error: "Video not found." });
+//     }
 
-    const videoStats = fs.statSync(video.filePath);
+//     const videoStats = fs.statSync(video.filePath);
 
-    // Cache video size for future reference
-    try {
-      if (!redisClient.isOpen) {
-        await redisClient.connect();
-      }
-      await redisClient.setEx(
-        `video:${videoId}:size`,
-        3600,
-        videoStats.size.toString()
-      );
-    } catch (err) {
-      console.error("Failed to cache video size:", err);
-    }
+//     // Cache video size for future reference
+//     try {
+//       if (!redisClient.isOpen) {
+//         await redisClient.connect();
+//       }
+//       await redisClient.setEx(
+//         `video:${videoId}:size`,
+//         3600,
+//         videoStats.size.toString()
+//       );
+//     } catch (err) {
+//       console.error("Failed to cache video size:", err);
+//     }
 
-    if (range) {
-      const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : null;
-      const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+//     if (range) {
+//       const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+//       const start = parseInt(startStr, 10);
+//       const end = endStr ? parseInt(endStr, 10) : null;
+//       const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 
-      // Validate range
-      if (isNaN(start) || start < 0 || start >= videoStats.size) {
-        res.writeHead(416, {
-          "Content-Range": `bytes */${videoStats.size}`,
-        });
-        return res.end();
-      }
+//       // Validate range
+//       if (isNaN(start) || start < 0 || start >= videoStats.size) {
+//         res.writeHead(416, {
+//           "Content-Range": `bytes */${videoStats.size}`,
+//         });
+//         return res.end();
+//       }
 
-      const actualEnd = end || videoStats.size - 1;
-      const chunkSize = Math.min(
-        actualEnd - start + 1,
-        videoStats.size - start
-      );
+//       const actualEnd = end || videoStats.size - 1;
+//       const chunkSize = Math.min(
+//         actualEnd - start + 1,
+//         videoStats.size - start
+//       );
 
-      try {
-        if (!redisClient.isOpen) await redisClient.connect();
+//       try {
+//         if (!redisClient.isOpen) await redisClient.connect();
 
-        // Strategy 1: Check exact range cache (your existing code)
-        const exactRangeKey = `video:${videoId}:range:${start}-${actualEnd}`;
-        const cachedRangeResponse = await redisClient.get(exactRangeKey);
+//         // Strategy 1: Check exact range cache (your existing code)
+//         const exactRangeKey = `video:${videoId}:range:${start}-${actualEnd}`;
+//         const cachedRangeResponse = await redisClient.get(exactRangeKey);
 
-        if (cachedRangeResponse) {
-          console.log(`Serving exact range from Redis cache: ${exactRangeKey}`);
-          const cachedData = JSON.parse(cachedRangeResponse);
-          res.writeHead(206, cachedData.headers);
-          res.end(Buffer.from(cachedData.chunk, "base64"));
+//         if (cachedRangeResponse) {
+//           console.log(`Serving exact range from Redis cache: ${exactRangeKey}`);
+//           const cachedData = JSON.parse(cachedRangeResponse);
+//           res.writeHead(206, cachedData.headers);
+//           res.end(Buffer.from(cachedData.chunk, "base64"));
 
-          // Pre-cache next chunks in background
-          setTimeout(
-            () =>
-              preCacheNextChunks(
-                videoId,
-                start,
-                actualEnd,
-                videoStats.size,
-                video.filePath
-              ),
-            0
-          );
-          return;
-        }
+//           // Pre-cache next chunks in background
+//           setTimeout(
+//             () =>
+//               preCacheNextChunks(
+//                 videoId,
+//                 start,
+//                 actualEnd,
+//                 videoStats.size,
+//                 video.filePath
+//               ),
+//             0
+//           );
+//           return;
+//         }
 
-        // Strategy 2: Check for chunk cache that contains this range
-        const cachedChunksKey = `video:${videoId}:chunks`;
-        const cachedChunksInfo = await redisClient.get(cachedChunksKey);
+//         // Strategy 2: Check for chunk cache that contains this range
+//         const cachedChunksKey = `video:${videoId}:chunks`;
+//         const cachedChunksInfo = await redisClient.get(cachedChunksKey);
 
-        if (cachedChunksInfo) {
-          const chunksInfo = JSON.parse(cachedChunksInfo);
+//         if (cachedChunksInfo) {
+//           const chunksInfo = JSON.parse(cachedChunksInfo);
 
-          // Find a chunk that contains the requested range
-          for (const chunkInfo of chunksInfo) {
-            if (start >= chunkInfo.start && (!end || end <= chunkInfo.end)) {
-              const chunkKey = `video:${videoId}:chunk:${chunkInfo.start}-${chunkInfo.end}`;
-              const cachedChunk = await redisClient.get(chunkKey);
+//           // Find a chunk that contains the requested range
+//           for (const chunkInfo of chunksInfo) {
+//             if (start >= chunkInfo.start && (!end || end <= chunkInfo.end)) {
+//               const chunkKey = `video:${videoId}:chunk:${chunkInfo.start}-${chunkInfo.end}`;
+//               const cachedChunk = await redisClient.get(chunkKey);
 
-              if (cachedChunk) {
-                const chunkBuffer = Buffer.from(cachedChunk, "base64");
-                const offsetStart = start - chunkInfo.start;
-                const offsetEnd = end
-                  ? end - chunkInfo.start
-                  : chunkBuffer.length - 1;
-                const extractedChunk = chunkBuffer.slice(
-                  offsetStart,
-                  offsetEnd + 1
-                );
+//               if (cachedChunk) {
+//                 const chunkBuffer = Buffer.from(cachedChunk, "base64");
+//                 const offsetStart = start - chunkInfo.start;
+//                 const offsetEnd = end
+//                   ? end - chunkInfo.start
+//                   : chunkBuffer.length - 1;
+//                 const extractedChunk = chunkBuffer.slice(
+//                   offsetStart,
+//                   offsetEnd + 1
+//                 );
 
-                const headers = {
-                  "Content-Range": `bytes ${start}-${
-                    start + extractedChunk.length - 1
-                  }/${videoStats.size}`,
-                  "Accept-Ranges": "bytes",
-                  "Content-Length": extractedChunk.length,
-                  "Content-Type": "video/mp4",
-                  "Access-Control-Allow-Origin": "*",
-                  "Cache-Control": "no-cache, no-store, must-revalidate",
-                };
+//                 const headers = {
+//                   "Content-Range": `bytes ${start}-${
+//                     start + extractedChunk.length - 1
+//                   }/${videoStats.size}`,
+//                   "Accept-Ranges": "bytes",
+//                   "Content-Length": extractedChunk.length,
+//                   "Content-Type": "video/mp4",
+//                   "Access-Control-Allow-Origin": "*",
+//                   "Cache-Control": "no-cache, no-store, must-revalidate",
+//                 };
 
-                console.log(
-                  `Serving partial range from cached chunk: ${chunkKey}`
-                );
-                res.writeHead(206, headers);
-                res.end(extractedChunk);
+//                 console.log(
+//                   `Serving partial range from cached chunk: ${chunkKey}`
+//                 );
+//                 res.writeHead(206, headers);
+//                 res.end(extractedChunk);
 
-                // Pre-cache next chunks in background
-                setTimeout(
-                  () =>
-                    preCacheNextChunks(
-                      videoId,
-                      start,
-                      actualEnd,
-                      videoStats.size,
-                      video.filePath
-                    ),
-                  0
-                );
-                return;
-              }
-            }
-          }
-        }
-      } catch (cacheError) {
-        console.error("Redis cache error:", cacheError);
-        // Continue with normal flow if cache fails
-      }
+//                 // Pre-cache next chunks in background
+//                 setTimeout(
+//                   () =>
+//                     preCacheNextChunks(
+//                       videoId,
+//                       start,
+//                       actualEnd,
+//                       videoStats.size,
+//                       video.filePath
+//                     ),
+//                   0
+//                 );
+//                 return;
+//               }
+//             }
+//           }
+//         }
+//       } catch (cacheError) {
+//         console.error("Redis cache error:", cacheError);
+//         // Continue with normal flow if cache fails
+//       }
 
-      // If we reach here, process the file normally (no cache hit)
-      try {
-        // Ensure Redis is connected
-        if (!redisClient.isOpen) {
-          await redisClient.connect();
-        }
+//       // If we reach here, process the file normally (no cache hit)
+//       try {
+//         // Ensure Redis is connected
+//         if (!redisClient.isOpen) {
+//           await redisClient.connect();
+//         }
 
-        const chunkKey = `video:${videoId}:chunk:${start}-${actualEnd}`;
-        const cachedChunk = await redisClient.get(chunkKey);
-        let chunk: Buffer;
+//         const chunkKey = `video:${videoId}:chunk:${start}-${actualEnd}`;
+//         const cachedChunk = await redisClient.get(chunkKey);
+//         let chunk: Buffer;
 
-        if (cachedChunk) {
-          console.log(`Serving chunk from Redis cache: ${chunkKey}`);
-          chunk = Buffer.from(cachedChunk, "base64");
-        } else {
-          // Read chunk from file and cache it
-          chunk = await new Promise<Buffer>((resolve, reject) => {
-            const chunks: Buffer[] = [];
-            const videoStream = fs.createReadStream(video.filePath, {
-              start,
-              end: actualEnd,
-            });
+//         if (cachedChunk) {
+//           console.log(`Serving chunk from Redis cache: ${chunkKey}`);
+//           chunk = Buffer.from(cachedChunk, "base64");
+//         } else {
+//           // Read chunk from file and cache it
+//           chunk = await new Promise<Buffer>((resolve, reject) => {
+//             const chunks: Buffer[] = [];
+//             const videoStream = fs.createReadStream(video.filePath, {
+//               start,
+//               end: actualEnd,
+//             });
 
-            videoStream.on("data", (data) => {
-              const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-              chunks.push(buffer);
-            });
-            videoStream.on("end", () => resolve(Buffer.concat(chunks)));
-            videoStream.on("error", reject);
-          });
+//             videoStream.on("data", (data) => {
+//               const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+//               chunks.push(buffer);
+//             });
+//             videoStream.on("end", () => resolve(Buffer.concat(chunks)));
+//             videoStream.on("error", reject);
+//           });
 
-          // Cache the chunk
-          try {
-            await redisClient.setEx(chunkKey, 3600, chunk.toString("base64"));
+//           // Cache the chunk
+//           try {
+//             await redisClient.setEx(chunkKey, 3600, chunk.toString("base64"));
 
-            // Cache the complete response data
-            const rangeResponseKey = `video:${videoId}:range:${start}-${actualEnd}`;
-            const responseData = {
-              headers: {
-                "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-                "Accept-Ranges": "bytes",
-                "Content-Length": chunkSize,
-                "Content-Type": "video/mp4",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-              },
-              chunk: chunk.toString("base64"),
-            };
-            await redisClient.setEx(
-              rangeResponseKey,
-              3600,
-              JSON.stringify(responseData)
-            );
+//             // Cache the complete response data
+//             const rangeResponseKey = `video:${videoId}:range:${start}-${actualEnd}`;
+//             const responseData = {
+//               headers: {
+//                 "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//                 "Accept-Ranges": "bytes",
+//                 "Content-Length": chunkSize,
+//                 "Content-Type": "video/mp4",
+//                 "Access-Control-Allow-Origin": "*",
+//                 "Cache-Control": "no-cache, no-store, must-revalidate",
+//               },
+//               chunk: chunk.toString("base64"),
+//             };
+//             await redisClient.setEx(
+//               rangeResponseKey,
+//               3600,
+//               JSON.stringify(responseData)
+//             );
 
-            // Update chunks registry
-            const chunksKey = `video:${videoId}:chunks`;
-            let chunksInfo = [];
+//             // Update chunks registry
+//             const chunksKey = `video:${videoId}:chunks`;
+//             let chunksInfo = [];
 
-            try {
-              const existingChunksInfo = await redisClient.get(chunksKey);
-              if (existingChunksInfo) {
-                chunksInfo = JSON.parse(existingChunksInfo);
-              }
-            } catch (err) {
-              console.error("Error reading chunks registry:", err);
-            }
+//             try {
+//               const existingChunksInfo = await redisClient.get(chunksKey);
+//               if (existingChunksInfo) {
+//                 chunksInfo = JSON.parse(existingChunksInfo);
+//               }
+//             } catch (err) {
+//               console.error("Error reading chunks registry:", err);
+//             }
 
-            const chunkExists = chunksInfo.some(
-              (ci: { start: number; end: number }) =>
-                ci.start === start && ci.end === actualEnd
-            );
+//             const chunkExists = chunksInfo.some(
+//               (ci: { start: number; end: number }) =>
+//                 ci.start === start && ci.end === actualEnd
+//             );
 
-            if (!chunkExists) {
-              chunksInfo.push({ start, end: actualEnd });
-              await redisClient.setEx(
-                chunksKey,
-                3600,
-                JSON.stringify(chunksInfo)
-              );
-            }
-          } catch (cacheError) {
-            console.error("Cache storage error:", cacheError);
-          }
-        }
+//             if (!chunkExists) {
+//               chunksInfo.push({ start, end: actualEnd });
+//               await redisClient.setEx(
+//                 chunksKey,
+//                 3600,
+//                 JSON.stringify(chunksInfo)
+//               );
+//             }
+//           } catch (cacheError) {
+//             console.error("Cache storage error:", cacheError);
+//           }
+//         }
 
-        const headers = {
-          "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": "video/mp4",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        };
+//         const headers = {
+//           "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//           "Accept-Ranges": "bytes",
+//           "Content-Length": chunkSize,
+//           "Content-Type": "video/mp4",
+//           "Access-Control-Allow-Origin": "*",
+//           "Cache-Control": "no-cache, no-store, must-revalidate",
+//         };
 
-        res.writeHead(206, headers);
-        res.end(chunk);
+//         res.writeHead(206, headers);
+//         res.end(chunk);
 
-        // Pre-cache next chunks in background
-        setTimeout(
-          () =>
-            preCacheNextChunks(
-              videoId,
-              start,
-              actualEnd,
-              videoStats.size,
-              video.filePath
-            ),
-          0
-        );
-        return;
-      } catch (redisError) {
-        console.error("Redis error, falling back to streaming:", redisError);
-        // Fallback to direct streaming if Redis fails
-        const headers = {
-          "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": "video/mp4",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        };
-        res.writeHead(206, headers);
-        const videoStream = fs.createReadStream(video.filePath, {
-          start,
-          end: actualEnd,
-        });
-        videoStream.pipe(res);
+//         // Pre-cache next chunks in background
+//         setTimeout(
+//           () =>
+//             preCacheNextChunks(
+//               videoId,
+//               start,
+//               actualEnd,
+//               videoStats.size,
+//               video.filePath
+//             ),
+//           0
+//         );
+//         return;
+//       } catch (redisError) {
+//         console.error("Redis error, falling back to streaming:", redisError);
+//         // Fallback to direct streaming if Redis fails
+//         const headers = {
+//           "Content-Range": `bytes ${start}-${actualEnd}/${videoStats.size}`,
+//           "Accept-Ranges": "bytes",
+//           "Content-Length": chunkSize,
+//           "Content-Type": "video/mp4",
+//           "Access-Control-Allow-Origin": "*",
+//           "Cache-Control": "no-cache, no-store, must-revalidate",
+//         };
+//         res.writeHead(206, headers);
+//         const videoStream = fs.createReadStream(video.filePath, {
+//           start,
+//           end: actualEnd,
+//         });
+//         videoStream.pipe(res);
 
-        // Pre-cache next chunks in background even if Redis failed for current chunk
-        setTimeout(
-          () =>
-            preCacheNextChunks(
-              videoId,
-              start,
-              actualEnd,
-              videoStats.size,
-              video.filePath
-            ),
-          0
-        );
-        return;
-      }
-    }
+//         // Pre-cache next chunks in background even if Redis failed for current chunk
+//         setTimeout(
+//           () =>
+//             preCacheNextChunks(
+//               videoId,
+//               start,
+//               actualEnd,
+//               videoStats.size,
+//               video.filePath
+//             ),
+//           0
+//         );
+//         return;
+//       }
+//     }
 
-    // If no range is requested, serve the entire file
-    res.writeHead(200, {
-      "Content-Length": videoStats.size,
-      "Content-Type": "video/mp4",
-      "Accept-Ranges": "bytes",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-    });
-    const videoStream = fs.createReadStream(video.filePath);
-    videoStream.pipe(res);
-  } catch (error) {
-    console.error("Error serving video:", error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to serve video." });
-    }
-  }
-};
+//     // If no range is requested, serve the entire file
+//     res.writeHead(200, {
+//       "Content-Length": videoStats.size,
+//       "Content-Type": "video/mp4",
+//       "Accept-Ranges": "bytes",
+//       "Access-Control-Allow-Origin": "*",
+//       "Cache-Control": "no-cache, no-store, must-revalidate",
+//     });
+//     const videoStream = fs.createReadStream(video.filePath);
+//     videoStream.pipe(res);
+//   } catch (error) {
+//     console.error("Error serving video:", error);
+//     if (!res.headersSent) {
+//       res.status(500).json({ error: "Failed to serve video." });
+//     }
+//   }
+// };
 
-// Pre-cache next chunks for smooth playback
-async function preCacheNextChunks(
-  videoId: string,
-  currentStart: number,
-  currentEnd: number,
-  videoSize: number,
-  filePath: string
-) {
-  console.log("Pre-caching next chunks...");
-  console.log(
-    "videoId:",
-    videoId,
-    "currentStart:",
-    currentStart,
-    "currentEnd:",
-    currentEnd,
-    "videoSize:",
-    videoSize
-  );
-  try {
-    if (!redisClient.isOpen) await redisClient.connect();
+// // Pre-cache next chunks for smooth playback
+// async function preCacheNextChunks(
+//   videoId: string,
+//   currentStart: number,
+//   currentEnd: number,
+//   videoSize: number,
+//   filePath: string
+// ) {
+//   console.log("Pre-caching next chunks...");
+//   console.log(
+//     "videoId:",
+//     videoId,
+//     "currentStart:",
+//     currentStart,
+//     "currentEnd:",
+//     currentEnd,
+//     "videoSize:",
+//     videoSize
+//   );
+//   try {
+//     if (!redisClient.isOpen) await redisClient.connect();
 
-    const CHUNK_SIZE = 1024 * 1024; // 1MB
-    const PRE_CACHE_CHUNKS = 3; // Pre-cache next 3 chunks
+//     const CHUNK_SIZE = 1024 * 1024; // 1MB
+//     const PRE_CACHE_CHUNKS = 3; // Pre-cache next 3 chunks
 
-    for (let i = 1; i <= PRE_CACHE_CHUNKS; i++) {
-      const nextStart = currentEnd + 1;
-      const nextEnd = Math.min(nextStart + CHUNK_SIZE - 1, videoSize - 1);
+//     for (let i = 1; i <= PRE_CACHE_CHUNKS; i++) {
+//       const nextStart = currentEnd + 1;
+//       const nextEnd = Math.min(nextStart + CHUNK_SIZE - 1, videoSize - 1);
 
-      if (nextStart >= videoSize) break;
+//       if (nextStart >= videoSize) break;
 
-      const chunkKey = `video:${videoId}:chunk:${nextStart}-${nextEnd}`;
-      const existingChunk = await redisClient.get(chunkKey);
+//       const chunkKey = `video:${videoId}:chunk:${nextStart}-${nextEnd}`;
+//       const existingChunk = await redisClient.get(chunkKey);
 
-      if (!existingChunk) {
-        // Cache this chunk in background
-        cacheVideoChunk(videoId, nextStart, nextEnd, filePath);
-      }
+//       if (!existingChunk) {
+//         // Cache this chunk in background
+//         cacheVideoChunk(videoId, nextStart, nextEnd, filePath);
+//       }
 
-      // Update currentEnd for next iteration
-      currentEnd = nextEnd;
-    }
-  } catch (error) {
-    console.error("Pre-caching error:", error);
-  }
-}
+//       // Update currentEnd for next iteration
+//       currentEnd = nextEnd;
+//     }
+//   } catch (error) {
+//     console.error("Pre-caching error:", error);
+//   }
+// }
 
-async function cacheVideoChunk(
-  videoId: string,
-  start: number,
-  end: number,
-  filePath: string
-) {
-  try {
-    const chunk = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      const videoStream = fs.createReadStream(filePath, { start, end });
+// async function cacheVideoChunk(
+//   videoId: string,
+//   start: number,
+//   end: number,
+//   filePath: string
+// ) {
+//   try {
+//     const chunk = await new Promise<Buffer>((resolve, reject) => {
+//       const chunks: Buffer[] = [];
+//       const videoStream = fs.createReadStream(filePath, { start, end });
 
-      videoStream.on("data", (data) => {
-        chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
-      });
-      videoStream.on("end", () => resolve(Buffer.concat(chunks)));
-      videoStream.on("error", reject);
-    });
+//       videoStream.on("data", (data) => {
+//         chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+//       });
+//       videoStream.on("end", () => resolve(Buffer.concat(chunks)));
+//       videoStream.on("error", reject);
+//     });
 
-    await redisClient.setEx(
-      `video:${videoId}:chunk:${start}-${end}`,
-      86400, // 24 hours TTL
-      chunk.toString("base64")
-    );
+//     await redisClient.setEx(
+//       `video:${videoId}:chunk:${start}-${end}`,
+//       86400, // 24 hours TTL
+//       chunk.toString("base64")
+//     );
 
-    // Update chunks registry
-    const chunksKey = `video:${videoId}:chunks`;
-    let chunksInfo = [];
+//     // Update chunks registry
+//     const chunksKey = `video:${videoId}:chunks`;
+//     let chunksInfo = [];
 
-    try {
-      const existingChunksInfo = await redisClient.get(chunksKey);
-      if (existingChunksInfo) {
-        chunksInfo = JSON.parse(existingChunksInfo);
-      }
-    } catch (err) {
-      console.error("Error reading chunks registry:", err);
-    }
+//     try {
+//       const existingChunksInfo = await redisClient.get(chunksKey);
+//       if (existingChunksInfo) {
+//         chunksInfo = JSON.parse(existingChunksInfo);
+//       }
+//     } catch (err) {
+//       console.error("Error reading chunks registry:", err);
+//     }
 
-    const chunkExists = chunksInfo.some(
-      (ci: any) => ci.start === start && ci.end === end
-    );
-    if (!chunkExists) {
-      chunksInfo.push({ start, end });
-      await redisClient.setEx(chunksKey, 86400, JSON.stringify(chunksInfo));
-    }
+//     const chunkExists = chunksInfo.some(
+//       (ci: any) => ci.start === start && ci.end === end
+//     );
+//     if (!chunkExists) {
+//       chunksInfo.push({ start, end });
+//       await redisClient.setEx(chunksKey, 86400, JSON.stringify(chunksInfo));
+//     }
 
-    console.log(`Pre-cached chunk: ${start}-${end}`);
-  } catch (error) {
-    console.error("Error caching chunk:", error);
-  }
-}
+//     console.log(`Pre-cached chunk: ${start}-${end}`);
+//   } catch (error) {
+//     console.error("Error caching chunk:", error);
+//   }
+// }
 
 /*** TEST */
 
