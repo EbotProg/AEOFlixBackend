@@ -48,7 +48,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.decryptReEncodeAndStream = exports.decryptVideo = exports.encryptVideo = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
+const ffmpeg_1 = __importDefault(require("@ffmpeg-installer/ffmpeg"));
+const ffprobe_1 = __importDefault(require("@ffprobe-installer/ffprobe"));
 const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
+fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_1.default.path);
+fluent_ffmpeg_1.default.setFfprobePath(ffprobe_1.default.path);
 const path_1 = __importDefault(require("path"));
 const stream = __importStar(require("stream"));
 const util_1 = require("util");
@@ -143,39 +147,39 @@ const decryptReEncodeAndStream = (filePath, start, end, res, encryptionKey) => _
         const bufferStream = new stream.PassThrough();
         // Set up FFmpeg with buffer stream as input
         const ffmpegProcess = (0, fluent_ffmpeg_1.default)(bufferStream)
-            .inputFormat('mp4') // Adjust based on your actual content format
+            .inputFormat("mp4") // Adjust based on your actual content format
             .outputOptions([
-            '-movflags faststart',
-            '-preset ultrafast',
-            '-tune zerolatency',
+            "-movflags faststart",
+            "-preset ultrafast",
+            "-tune zerolatency",
             // Skip to the approximate position in the video that corresponds to the byte range
             // Note: This is an approximation as byte ranges don't directly map to video time
-            '-ss 0', // You may need a more sophisticated mapping between byte range and video time
+            "-ss 0", // You may need a more sophisticated mapping between byte range and video time
         ])
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .format('mp4')
-            .on('start', (command) => console.log(`FFmpeg command: ${command}`))
-            .on('error', (err) => {
-            console.error('FFmpeg error:', err);
+            .videoCodec("libx264")
+            .audioCodec("aac")
+            .format("mp4")
+            .on("start", (command) => console.log(`FFmpeg command: ${command}`))
+            .on("error", (err) => {
+            console.error("FFmpeg error:", err);
             if (!res.headersSent) {
-                res.status(500).end('Error processing video.');
+                res.status(500).end("Error processing video.");
             }
         });
         // Pipe FFmpeg output to response
         ffmpegProcess.pipe(res, { end: true });
         // Create readable stream for the chunk
         const readStream = fs_1.default.createReadStream(filePath, { start, end });
-        const decipher = crypto_1.default.createDecipheriv('aes-256-cbc', Buffer.from(encryptionKey, 'hex'), iv);
+        const decipher = crypto_1.default.createDecipheriv("aes-256-cbc", Buffer.from(encryptionKey, "hex"), iv);
         // Process the stream
         yield pipeline(readStream, decipher, bufferStream);
         // End the buffer stream when all data has been processed
         bufferStream.end();
     }
     catch (error) {
-        console.error('Error decrypting and streaming video:', error);
+        console.error("Error decrypting and streaming video:", error);
         if (!res.headersSent) {
-            res.status(500).end('Error processing video.');
+            res.status(500).end("Error processing video.");
         }
     }
 });

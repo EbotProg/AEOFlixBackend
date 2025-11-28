@@ -11,8 +11,8 @@ const videoSchema = new mongoose_1.default.Schema({
     uploadedAt: { type: Date, default: Date.now },
     thumbnailPath: { type: String, required: false },
     thumbnailName: { type: String, required: false },
-    cloudinaryUrl: { type: String, required: true },
-    thumbnailUrl: { type: String, required: true }
+    cloudinaryUrl: { type: String, required: false },
+    thumbnailUrl: { type: String, required: false },
 });
 const Video = mongoose_1.default.model("Video", videoSchema);
 exports.default = Video;
